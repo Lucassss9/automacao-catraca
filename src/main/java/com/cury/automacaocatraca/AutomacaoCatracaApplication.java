@@ -9,5 +9,4 @@ public class AutomacaoCatracaApplication {
 	public static void main(String[] args) {
 		SpringApplication.run(AutomacaoCatracaApplication.class, args);
 	}
-
 }
