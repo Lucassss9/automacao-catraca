@@ -19,3 +19,24 @@ cfobras:
   url: ${CFOBRAS_URL}
   email: ${CFOBRAS_EMAIL}
   password: ${CFOBRAS_PASSWORD}
+
+automacao:
+  download-dir: downloads
+  obras:
+    - codigo: SUPREME-ANALIA-FRANCO
+      nome-trc: "Cury SP Supreme Analia Franco CCISA 183"
+      nomes-cf-obras:
+        - "SUPREME ANÁLIA FRANCO"
+    - codigo: NOVO-MUNDO-CARRAO
+      nome-trc: "Cury SP Novo Mundo Carrão CCISA188"
+      nomes-cf-obras:
+        - "NOVO MUNDO CARRÃO"
+        - "NOVO MUNDO CARRÃO II"
+    - codigo: ELO-SANTO-ANDRE
+      nome-trc: "Cury SP Elo Santo Andre"
+      nomes-cf-obras:
+        - "ELO SANTO ANDRÉ"
+    - codigo: MODERN-MOOCA
+      nome-trc: "Cury SP Modern Mooca CCISA124"
+      nomes-cf-obras:
+        - "MODERN MOOCA"
