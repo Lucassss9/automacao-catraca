@@ -1,4 +1,6 @@
-package com.cury.automacaocatraca.cfObras;
+package com.cury.automacaocatraca.cfobras;
 
-public class PendenciaFuncionario {
-}
+public record PendenciaFuncionario(
+        String nomeFuncionarioTrc,
+        String nomeEmpreiteiraTrc
+) {}
