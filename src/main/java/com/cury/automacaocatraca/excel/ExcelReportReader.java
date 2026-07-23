@@ -7,12 +7,17 @@ import org.springframework.stereotype.Component;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.Map;
+import java.util.Set;
+import java.util.TreeMap;
+import java.util.TreeSet;
 
 @Component
 public class ExcelReportReader {
 
     private static final int LINHA_INICIAL = 6;
     private static final int COL_OBRA = 0;
+    private static final int COL_EMPREITEIRA = 1;
+    private static final int COL_FUNCIONARIO = 2;
     private static final int COL_TIPO = 6;
 
     private final DataFormatter dataFormatter = new DataFormatter();
@@ -21,7 +26,7 @@ public class ExcelReportReader {
         try (Workbook workbook = WorkbookFactory.create(arquivo.toFile())) {
             Sheet aba = workbook.getSheetAt(0);
             validarLayout(aba);
-            return new RelatorioFrequencia("Teste", Map.of());
+            return lerDados(aba);
         } catch (IOException e) {
             throw new RuntimeException("Falha ao ler o relatorio: " + arquivo, e);
         }
@@ -47,6 +52,42 @@ public class ExcelReportReader {
                     "Layout inesperado: esperava ENTRADA ou SAIDA na coluna G da linha "
                             + (LINHA_INICIAL + 1) + ", encontrei: '" + tipo + "'");
         }
+    }
+
+    private RelatorioFrequencia lerDados(Sheet aba) {
+        Map<String, Set<String>> dados = new TreeMap<>();
+        String nomeObra = null;
+
+        for (int i = LINHA_INICIAL; i <= aba.getLastRowNum(); i++) {
+            Row linha = aba.getRow(i);
+            if (linha == null) {
+                break;
+            }
+
+            String obra = textoDa(linha, COL_OBRA);
+            if (obra.isBlank()) {
+                break;
+            }
+
+            if (nomeObra == null) {
+                nomeObra = obra;
+            }
+
+            String empreiteira = textoDa(linha, COL_EMPREITEIRA);
+            String funcionario = textoDa(linha, COL_FUNCIONARIO);
+
+            if (empreiteira.isBlank() || funcionario.isBlank()) {
+                continue;
+            }
+
+            dados.computeIfAbsent(empreiteira, chave -> new TreeSet<>()).add(funcionario);
+        }
+
+        if (nomeObra == null) {
+            throw new RuntimeException("Relatorio sem linhas de dados a partir da linha " + (LINHA_INICIAL + 1));
+        }
+
+        return new RelatorioFrequencia(nomeObra, dados);
     }
 
     private String textoDa(Row linha, int coluna) {
