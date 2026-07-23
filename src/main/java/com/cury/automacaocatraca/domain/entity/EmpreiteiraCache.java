@@ -33,6 +33,9 @@ public class EmpreiteiraCache {
     @Column(name = "nome_fantasia")
     private String nomeFantasia;
 
+    @Column(name = "cor_identificacao", length = 20)
+    private String corIdentificacao;
+
     @Column(name = "cadastrada_no_cf_obras", nullable = false)
     private boolean cadastradaNoCfObras;
 
