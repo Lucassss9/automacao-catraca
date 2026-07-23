@@ -9,5 +9,6 @@ public interface FuncionarioCacheRepository extends JpaRepository<FuncionarioCac
 
     Optional<FuncionarioCache> findByCpf(String cpf);
 
-    Optional<FuncionarioCache> findByNomeNormalizadoAndEmpreiteiraCnpj(String nomeNormalizado, String empreiteiraCnpj);
+    Optional<FuncionarioCache> findByNomeNormalizadoAndEmpreiteiraNomeNormalizado(
+            String nomeNormalizado, String empreiteiraNomeNormalizado);
 }

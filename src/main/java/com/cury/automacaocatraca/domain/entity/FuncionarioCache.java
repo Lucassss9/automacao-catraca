@@ -12,7 +12,7 @@ import java.time.LocalDateTime;
         name = "funcionario_cache",
         uniqueConstraints = @UniqueConstraint(
                 name = "uk_funcionario_nome_empreiteira",
-                columnNames = {"nome_normalizado", "empreiteira_cnpj"}
+                columnNames = {"nome_normalizado", "empreiteira_nome_normalizado"}
         )
 )
 @Getter
@@ -36,8 +36,11 @@ public class FuncionarioCache {
     @Column(name = "funcao")
     private String funcao;
 
-    @Column(name = "empreiteira_cnpj")
-    private String empreiteiraCnpj;
+    @Column(name = "empreiteira_nome_trc")
+    private String empreiteiraNomeTrc;
+
+    @Column(name = "empreiteira_nome_normalizado", nullable = false)
+    private String empreiteiraNomeNormalizado;
 
     @Column(name = "cadastrado_no_cf_obras", nullable = false)
     private boolean cadastradoNoCfObras;
