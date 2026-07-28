@@ -2,6 +2,8 @@ package com.cury.automacaocatraca.excel;
 
 import com.cury.automacaocatraca.domain.util.NormalizadorNome;
 import org.apache.poi.ss.usermodel.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
@@ -14,6 +16,8 @@ import java.util.TreeSet;
 @Component
 public class ExcelReportReader {
 
+    private static final Logger log = LoggerFactory.getLogger(ExcelReportReader.class);
+
     private static final int LINHA_INICIAL = 6;
     private static final int COL_OBRA = 0;
     private static final int COL_EMPREITEIRA = 1;
@@ -25,11 +29,24 @@ public class ExcelReportReader {
     public RelatorioFrequencia ler(Path arquivo) {
         try (Workbook workbook = WorkbookFactory.create(arquivo.toFile())) {
             Sheet aba = workbook.getSheetAt(0);
+
+            if (semRegistros(aba)) {
+                log.warn("Relatorio da catraca veio SEM REGISTROS — nenhuma batida no periodo, "
+                        + "ou a tela do TRC nao trouxe dados");
+                return new RelatorioFrequencia("", new TreeMap<>());
+            }
+
             validarLayout(aba);
             return lerDados(aba);
         } catch (IOException e) {
             throw new RuntimeException("Falha ao ler o relatorio: " + arquivo, e);
         }
+    }
+
+    private boolean semRegistros(Sheet aba) {
+        Row linha = aba.getRow(LINHA_INICIAL);
+
+        return linha == null || textoDa(linha, COL_OBRA).isBlank();
     }
 
     private void validarLayout(Sheet aba) {

@@ -1,5 +1,7 @@
-package com.cury.automacaocatraca.cfobras;
+package com.cury.automacaocatraca.cfobras.service;
 
+import com.cury.automacaocatraca.cfobras.dto.PendenciaFuncionario;
+import com.cury.automacaocatraca.cfobras.dto.PlanoConciliacao;
 import com.cury.automacaocatraca.domain.entity.EmpreiteiraCache;
 import com.cury.automacaocatraca.domain.entity.FuncionarioCache;
 import com.cury.automacaocatraca.domain.util.NormalizadorNome;

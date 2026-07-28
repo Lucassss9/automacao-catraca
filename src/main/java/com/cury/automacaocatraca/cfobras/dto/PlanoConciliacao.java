@@ -1,4 +1,4 @@
-package com.cury.automacaocatraca.cfobras;
+package com.cury.automacaocatraca.cfobras.dto;
 
 import java.util.Collections;
 import java.util.List;

@@ -1,4 +1,4 @@
-package com.cury.automacaocatraca.cfobras;
+package com.cury.automacaocatraca.cfobras.page;
 
 import com.cury.automacaocatraca.config.CfObrasProperties;
 import org.openqa.selenium.By;
