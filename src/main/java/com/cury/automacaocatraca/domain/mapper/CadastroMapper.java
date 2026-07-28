@@ -35,7 +35,7 @@ public class CadastroMapper {
 
     public DadosCadastroFuncionario mapear(FuncionarioTrc origem) {
         return new DadosCadastroFuncionario(
-                origem.nome(),
+                NormalizadorNome.proprio(origem.nome()),
                 origem.cpf(),
                 origem.rg(),
                 origem.dataNascimento(),
