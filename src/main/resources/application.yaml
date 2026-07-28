@@ -19,9 +19,21 @@ cfobras:
   url: ${CFOBRAS_URL}
   email: ${CFOBRAS_EMAIL}
   password: ${CFOBRAS_PASSWORD}
+  senha-funcionario:
+    estrategia: fixa
+    valor: "123456"
 
 automacao:
   download-dir: downloads
+  retencao-dias: 30
+  dias-atras: 0
+  navegador:
+    headless: false
+    espera-implicita-segundos: 3
+  agendamento:
+    ativo: true
+    fuso: America/Sao_Paulo
+    crons: "0 30 7 * * *"
   obras:
     - codigo: SUPREME-ANALIA-FRANCO
       nome-trc: "Cury SP Supreme Analia Franco CCISA 183"
