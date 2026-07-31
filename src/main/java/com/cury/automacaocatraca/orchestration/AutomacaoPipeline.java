@@ -3,14 +3,13 @@ package com.cury.automacaocatraca.orchestration;
 import com.cury.automacaocatraca.cfobras.dto.EmpreiteiraMapeada;
 import com.cury.automacaocatraca.cfobras.dto.PlanoConciliacao;
 import com.cury.automacaocatraca.cfobras.page.CadastroEmpreiteiraPage;
-import com.cury.automacaocatraca.cfobras.page.CfObrasAuthenticator;
 import com.cury.automacaocatraca.cfobras.page.CfObrasNavigator;
 import com.cury.automacaocatraca.cfobras.page.PontoCatracaPage;
 import com.cury.automacaocatraca.cfobras.page.VinculoObraPage;
+import com.cury.automacaocatraca.cfobras.service.EmpreiteiraLocalizador;
 import com.cury.automacaocatraca.cfobras.service.EmpreiteiraMatcher;
 import com.cury.automacaocatraca.config.ObraConfig;
 import com.cury.automacaocatraca.config.ObrasRegistry;
-import com.cury.automacaocatraca.config.WebDriverFactory;
 import com.cury.automacaocatraca.domain.dto.DadosCadastroEmpreiteira;
 import com.cury.automacaocatraca.domain.entity.EmpreiteiraCache;
 import com.cury.automacaocatraca.domain.entity.EmpreiteiraObraVinculo;
@@ -26,8 +25,8 @@ import com.cury.automacaocatraca.repository.EmpreiteiraCacheRepository;
 import com.cury.automacaocatraca.repository.EmpreiteiraObraVinculoRepository;
 import com.cury.automacaocatraca.repository.ExecucaoLogRepository;
 import com.cury.automacaocatraca.repository.ObraRepository;
-import com.cury.automacaocatraca.trc.TrcAuthenticator;
 import com.cury.automacaocatraca.trc.TrcEmployeeExtractor;
+import com.cury.automacaocatraca.trc.TrcFuncionarioExtractor;
 import com.cury.automacaocatraca.trc.TrcObraSelector;
 import com.cury.automacaocatraca.trc.TrcReportExtractor;
 import com.cury.automacaocatraca.trc.dto.EmpreiteiraTrc;
@@ -39,7 +38,9 @@ import org.springframework.stereotype.Component;
 import java.nio.file.Path;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -51,18 +52,18 @@ public class AutomacaoPipeline {
     private static final Set<String> IGNORADAS = Set.of("VISITANTE");
 
     private final ObrasRegistry obrasRegistry;
-    private final WebDriverFactory webDriverFactory;
-    private final TrcAuthenticator trcAuth;
+    private final SessaoNavegadores sessao;
     private final TrcObraSelector trcObraSelector;
     private final TrcReportExtractor trcReportExtractor;
     private final TrcEmployeeExtractor trcEmployeeExtractor;
+    private final TrcFuncionarioExtractor trcFuncionarioExtractor;
     private final ExcelReportReader excelReader;
-    private final CfObrasAuthenticator cfAuth;
     private final CfObrasNavigator cfNavigator;
     private final PontoCatracaPage pontoCatracaPage;
     private final CadastroEmpreiteiraPage cadastroPage;
     private final VinculoObraPage vinculoObraPage;
     private final EmpreiteiraMatcher empreiteiraMatcher;
+    private final EmpreiteiraLocalizador empreiteiraLocalizador;
     private final ConciliacaoFuncionariosStep funcionariosStep;
     private final CompletarCadastrosStep completarStep;
     private final CadastroMapper cadastroMapper;
@@ -73,20 +74,21 @@ public class AutomacaoPipeline {
     private final ExecucaoLogRepository execucaoLogRepository;
     private final RelatorioExecucaoService relatorioService;
     private final DiagnosticoService diagnosticoService;
+    private final CronometroContexto cronometroContexto;
 
     public AutomacaoPipeline(ObrasRegistry obrasRegistry,
-                             WebDriverFactory webDriverFactory,
-                             TrcAuthenticator trcAuth,
+                             SessaoNavegadores sessao,
                              TrcObraSelector trcObraSelector,
                              TrcReportExtractor trcReportExtractor,
                              TrcEmployeeExtractor trcEmployeeExtractor,
+                             TrcFuncionarioExtractor trcFuncionarioExtractor,
                              ExcelReportReader excelReader,
-                             CfObrasAuthenticator cfAuth,
                              CfObrasNavigator cfNavigator,
                              PontoCatracaPage pontoCatracaPage,
                              CadastroEmpreiteiraPage cadastroPage,
                              VinculoObraPage vinculoObraPage,
                              EmpreiteiraMatcher empreiteiraMatcher,
+                             EmpreiteiraLocalizador empreiteiraLocalizador,
                              ConciliacaoFuncionariosStep funcionariosStep,
                              CompletarCadastrosStep completarStep,
                              CadastroMapper cadastroMapper,
@@ -96,20 +98,21 @@ public class AutomacaoPipeline {
                              EmpreiteiraObraVinculoRepository vinculoRepository,
                              ExecucaoLogRepository execucaoLogRepository,
                              RelatorioExecucaoService relatorioService,
-                             DiagnosticoService diagnosticoService) {
+                             DiagnosticoService diagnosticoService,
+                             CronometroContexto cronometroContexto) {
         this.obrasRegistry = obrasRegistry;
-        this.webDriverFactory = webDriverFactory;
-        this.trcAuth = trcAuth;
+        this.sessao = sessao;
         this.trcObraSelector = trcObraSelector;
         this.trcReportExtractor = trcReportExtractor;
         this.trcEmployeeExtractor = trcEmployeeExtractor;
+        this.trcFuncionarioExtractor = trcFuncionarioExtractor;
         this.excelReader = excelReader;
-        this.cfAuth = cfAuth;
         this.cfNavigator = cfNavigator;
         this.pontoCatracaPage = pontoCatracaPage;
         this.cadastroPage = cadastroPage;
         this.vinculoObraPage = vinculoObraPage;
         this.empreiteiraMatcher = empreiteiraMatcher;
+        this.empreiteiraLocalizador = empreiteiraLocalizador;
         this.funcionariosStep = funcionariosStep;
         this.completarStep = completarStep;
         this.cadastroMapper = cadastroMapper;
@@ -120,6 +123,7 @@ public class AutomacaoPipeline {
         this.execucaoLogRepository = execucaoLogRepository;
         this.relatorioService = relatorioService;
         this.diagnosticoService = diagnosticoService;
+        this.cronometroContexto = cronometroContexto;
     }
 
     public ExecucaoLog executar(ObraConfig obra) {
@@ -131,6 +135,8 @@ public class AutomacaoPipeline {
         WebDriver trc = null;
         WebDriver cf = null;
 
+        sessao.novaObra(obra.codigo());
+
         int cadastradas = 0;
         int vinculadas = 0;
         ConciliacaoFuncionariosStep.Resumo resumoFuncionarios = new ConciliacaoFuncionariosStep.Resumo();
@@ -141,6 +147,10 @@ public class AutomacaoPipeline {
         dados.nomeObra = String.join(" + ", nomesCfObras);
         dados.dataReferencia = trcReportExtractor.dataDeReferencia();
 
+        Cronometro cronometro = cronometroContexto.iniciar(obra.codigo(), dados.nomeObra);
+        cronometro.definirDataReferencia(dados.dataReferencia);
+        dados.cronometro = cronometro;
+
         AtomicBoolean relatorioGerado = new AtomicBoolean(false);
         Thread aoInterromper = engatilharRelatorioDeEmergencia(registro, dados, relatorioGerado);
 
@@ -150,16 +160,35 @@ public class AutomacaoPipeline {
             log.info("==========================================================");
 
             log.info("----- ETAPA 1/8: EXTRACAO NO TRC -----");
-            trc = webDriverFactory.criar(pasta);
-            trcAuth.login(trc);
-            trcObraSelector.selecionar(trc, obra);
-            Path arquivo = trcReportExtractor.extrairRelatorioDoDia(trc, obra, pasta);
+            Path arquivo;
+
+            try (Cronometro.Marcacao etapa = cronometro.iniciar(Cronometro.ETAPA_TRC)) {
+                try (Cronometro.Marcacao passo = cronometro.iniciar(Cronometro.ETAPA_TRC,
+                        "sessao do TRC (abrir ou reaproveitar)")) {
+                    trc = sessao.trc();
+                }
+
+                try (Cronometro.Marcacao passo = cronometro.iniciar(Cronometro.ETAPA_TRC, "selecionar a obra no TRC")) {
+                    trcObraSelector.selecionar(trc, obra);
+                }
+
+                try (Cronometro.Marcacao passo = cronometro.iniciar(Cronometro.ETAPA_TRC,
+                        "gerar e baixar o relatorio 03.1")) {
+                    arquivo = trcReportExtractor.extrairRelatorioDoDia(trc, obra, pasta);
+                }
+            }
+
             log.info("Arquivo baixado: {}", arquivo.getFileName());
             dados.arquivoRelatorio = String.valueOf(arquivo.getFileName());
             dados.arquivoOrigem = arquivo;
 
             log.info("----- ETAPA 2/8: LEITURA DO EXCEL -----");
-            RelatorioFrequencia relatorio = excelReader.ler(arquivo);
+            RelatorioFrequencia relatorio;
+
+            try (Cronometro.Marcacao etapa = cronometro.iniciar(Cronometro.ETAPA_EXCEL)) {
+                relatorio = excelReader.ler(arquivo);
+            }
+
             int totalFuncionarios = relatorio.empreiteiras().stream()
                     .mapToInt(e -> relatorio.funcionariosDa(e).size())
                     .sum();
@@ -177,44 +206,77 @@ public class AutomacaoPipeline {
             }
 
             log.info("----- ETAPA 3/8: CADASTRO DAS EMPREITEIRAS -----");
-            cf = webDriverFactory.criar(pasta);
-            cfAuth.login(cf);
-            cfNavigator.abrirModuloServicos(cf);
 
-            for (String nomeEmpreiteira : relatorio.empreiteiras()) {
-                if (IGNORADAS.contains(NormalizadorNome.normalizar(nomeEmpreiteira))) {
-                    continue;
+            try (Cronometro.Marcacao etapa = cronometro.iniciar(Cronometro.ETAPA_EMPREITEIRAS)) {
+                try (Cronometro.Marcacao passo = cronometro.iniciar(Cronometro.ETAPA_EMPREITEIRAS,
+                        "sessao do CF Obras (abrir ou reaproveitar)")) {
+                    cf = sessao.cfObras();
+                    cfNavigator.abrirModuloServicos(cf);
                 }
 
-                if (cadastrarUma(trc, cf, nomeEmpreiteira, nomeObraCfObras, problemas)) {
-                    cadastradas++;
-                    dados.empreiteirasCadastradas.add(nomeEmpreiteira);
+                for (String nomeEmpreiteira : relatorio.empreiteiras()) {
+                    if (IGNORADAS.contains(NormalizadorNome.normalizar(nomeEmpreiteira))) {
+                        continue;
+                    }
+
+                    try (Cronometro.Marcacao item = cronometro.iniciar(Cronometro.ETAPA_EMPREITEIRAS,
+                            "empreiteira " + nomeEmpreiteira)) {
+
+                        if (cadastrarUma(trc, cf, nomeEmpreiteira, nomeObraCfObras, problemas, relatorio)) {
+                            cadastradas++;
+                            dados.empreiteirasCadastradas.add(nomeEmpreiteira);
+                        }
+                    }
                 }
             }
+
             log.info("Empreiteiras cadastradas nesta execucao: {}", cadastradas);
 
             log.info("----- ETAPA 4/8: VINCULO EMPREITEIRA x OBRA -----");
-            for (String nomeCf : nomesCfObras) {
-                log.info("--- vinculo em '{}' ---", nomeCf);
-                vinculadas += conferirVinculos(cf, trc, relatorio, obra, nomeCf, problemas, dados);
+
+            try (Cronometro.Marcacao etapa = cronometro.iniciar(Cronometro.ETAPA_VINCULOS)) {
+                for (String nomeCf : nomesCfObras) {
+                    log.info("--- vinculo em '{}' ---", nomeCf);
+
+                    try (Cronometro.Marcacao item = cronometro.iniciar(Cronometro.ETAPA_VINCULOS,
+                            "matriz de " + nomeCf)) {
+                        vinculadas += conferirVinculos(cf, trc, relatorio, obra, nomeCf, problemas, dados);
+                    }
+                }
+
+                try (Cronometro.Marcacao item = cronometro.iniciar(Cronometro.ETAPA_VINCULOS,
+                        "espelhar a matriz no banco")) {
+                    sincronizarMatriz(cf, trc, dados);
+                }
             }
+
             log.info("Vinculos criados nesta execucao: {}", vinculadas);
 
             log.info("----- ETAPA 5/8: CONCILIACAO E CADASTRO DE FUNCIONARIOS -----");
-            PlanoConciliacao plano = empreiteiraMatcher.conciliar(relatorio);
-            resumoFuncionarios = funcionariosStep.executar(trc, cf, plano);
+
+            try (Cronometro.Marcacao etapa = cronometro.iniciar(Cronometro.ETAPA_FUNCIONARIOS)) {
+                PlanoConciliacao plano = empreiteiraMatcher.conciliar(relatorio);
+                resumoFuncionarios = funcionariosStep.executar(trc, cf, plano, cronometro);
+            }
+
             dados.funcionarios = resumoFuncionarios;
             problemas.append(resumoFuncionarios.problemasTexto());
 
             List<EmpreiteiraMapeada> aindaFaltando = new ArrayList<>();
 
-            for (String nomeCf : nomesCfObras) {
-                log.info("----- ETAPAS 6-7/8: '{}' -----", nomeCf);
-                aindaFaltando.addAll(subirEImportar(cf, arquivo, nomeCf, problemas, dados));
+            try (Cronometro.Marcacao etapa = cronometro.iniciar(Cronometro.ETAPA_IMPORTACAO)) {
+                for (String nomeCf : nomesCfObras) {
+                    log.info("----- ETAPAS 6-7/8: '{}' -----", nomeCf);
+                    aindaFaltando.addAll(subirEImportar(cf, arquivo, nomeCf, problemas, dados, cronometro));
+                }
             }
 
             log.info("----- ETAPA 8/8: COMPLETAR CADASTROS INCOMPLETOS -----");
-            CompletarCadastrosStep.Resumo completados = completarStep.executar(trc, cf);
+            CompletarCadastrosStep.Resumo completados;
+
+            try (Cronometro.Marcacao etapa = cronometro.iniciar(Cronometro.ETAPA_COMPLETAR)) {
+                completados = completarStep.executar(trc, cf);
+            }
 
             for (String item : completados.semDadosNoTrc) {
                 dados.pendencias.add("cadastro incompleto e sem dados no TRC: " + item);
@@ -243,6 +305,7 @@ public class AutomacaoPipeline {
             diagnosticoService.capturar(cf, obra.codigo(), "cfobras-" + e.getClass().getSimpleName());
             diagnosticoService.capturar(trc, obra.codigo(), "trc-" + e.getClass().getSimpleName());
             dados.pendencias.add("Falha: " + e.getMessage() + " — print e HTML na subpasta falhas/");
+            sessao.descartarTudo();
             registro.setStatus(StatusExecucao.FALHA);
             registro.setEmpreiteirasCadastradas(cadastradas);
             registro.setFuncionariosCadastrados(resumoFuncionarios.cadastrados.size());
@@ -251,17 +314,26 @@ public class AutomacaoPipeline {
             problemas.append("ERRO FATAL: ").append(e.getMessage());
             registro.setMensagemErro(cortar(problemas.toString(), 3900));
         } finally {
-            fechar(cf, "CF Obras");
-            fechar(trc, "TRC");
-            execucaoLogRepository.save(registro);
+            try (Cronometro.Marcacao etapa = cronometro.iniciar(Cronometro.ETAPA_ENCERRAMENTO)) {
+                execucaoLogRepository.save(registro);
+            }
 
             dados.fim = LocalDateTime.now();
             dados.funcionarios = resumoFuncionarios;
+
+            cronometro.encerrar();
+
+            log.info("Cronometro da obra {}: {} no total, {} no navegador, {} parado",
+                    obra.codigo(),
+                    Cronometro.formatar(cronometro.totalMs()),
+                    Cronometro.formatar(cronometro.totalNavegadorMs()),
+                    Cronometro.formatar(cronometro.totalPausaMs()));
 
             if (relatorioGerado.compareAndSet(false, true)) {
                 relatorioService.gerar(registro, dados);
             }
 
+            cronometroContexto.encerrar(registro, dados);
             desengatilhar(aoInterromper);
         }
 
@@ -277,6 +349,11 @@ public class AutomacaoPipeline {
             }
 
             dados.fim = LocalDateTime.now();
+
+            if (dados.cronometro != null) {
+                dados.cronometro.encerrar();
+            }
+
             dados.pendencias.add("EXECUCAO INTERROMPIDA — o relatorio cobre so o que rodou ate aqui");
             relatorioService.gerar(registro, dados);
         }, "relatorio-de-emergencia");
@@ -305,13 +382,21 @@ public class AutomacaoPipeline {
     private List<EmpreiteiraMapeada> subirEImportar(WebDriver cf, Path arquivo,
                                                     String nomeObraCfObras,
                                                     StringBuilder problemas,
-                                                    RelatorioExecucaoService.Dados dados) {
-        pontoCatracaPage.abrir(cf);
-        pontoCatracaPage.selecionarObra(cf, nomeObraCfObras);
-        pontoCatracaPage.enviarArquivo(cf, arquivo);
-        pontoCatracaPage.mapearPorNome(cf);
+                                                    RelatorioExecucaoService.Dados dados,
+                                                    Cronometro cronometro) {
 
-        mapearPeloBanco(cf);
+        try (Cronometro.Marcacao passo = cronometro.iniciar(Cronometro.ETAPA_IMPORTACAO,
+                "subir a planilha em " + nomeObraCfObras)) {
+            pontoCatracaPage.abrir(cf);
+            pontoCatracaPage.selecionarObra(cf, nomeObraCfObras);
+            pontoCatracaPage.enviarArquivo(cf, arquivo);
+        }
+
+        try (Cronometro.Marcacao passo = cronometro.iniciar(Cronometro.ETAPA_IMPORTACAO,
+                "mapear empreiteiras em " + nomeObraCfObras)) {
+            pontoCatracaPage.mapearPorNome(cf);
+            mapearPeloBanco(cf);
+        }
 
         List<EmpreiteiraMapeada> mapeamentoFinal = pontoCatracaPage.lerMapeamento(cf);
         List<EmpreiteiraMapeada> faltando = filtrarPendentes(mapeamentoFinal);
@@ -329,7 +414,14 @@ public class AutomacaoPipeline {
                 mapeamentoFinal.stream().filter(EmpreiteiraMapeada::mapeada).count(),
                 mapeamentoFinal.size());
 
-        if (!pontoCatracaPage.importar(cf)) {
+        boolean confirmou;
+
+        try (Cronometro.Marcacao passo = cronometro.iniciar(Cronometro.ETAPA_IMPORTACAO,
+                "importacao no CF Obras em " + nomeObraCfObras)) {
+            confirmou = pontoCatracaPage.importar(cf);
+        }
+
+        if (!confirmou) {
             problemas.append("importacao sem confirmacao em ").append(nomeObraCfObras).append("; ");
             dados.pendencias.add("A importacao em " + nomeObraCfObras + " foi acionada mas o "
                     + "CF Obras nao confirmou na tela — conferir manualmente");
@@ -384,8 +476,6 @@ public class AutomacaoPipeline {
             }
         }
 
-        sincronizarMatriz(cf, trc, dados);
-
         return criados;
     }
 
@@ -399,8 +489,26 @@ public class AutomacaoPipeline {
             return;
         }
 
-        int gravados = 0;
-        int removidos = 0;
+        Map<String, Obra> obrasPorNome = new HashMap<>();
+
+        for (Obra obra : obraRepository.findAll()) {
+            obrasPorNome.put(obra.getNomeNormalizado(), obra);
+        }
+
+        Map<Long, List<EmpreiteiraObraVinculo>> vinculosPorEmpreiteira = new HashMap<>();
+
+        for (EmpreiteiraObraVinculo vinculo : vinculoRepository.findAll()) {
+            if (vinculo.getEmpreiteira() == null || vinculo.getEmpreiteira().getId() == null) {
+                continue;
+            }
+
+            vinculosPorEmpreiteira
+                    .computeIfAbsent(vinculo.getEmpreiteira().getId(), id -> new ArrayList<>())
+                    .add(vinculo);
+        }
+
+        List<EmpreiteiraObraVinculo> novos = new ArrayList<>();
+        List<EmpreiteiraObraVinculo> obsoletos = new ArrayList<>();
 
         for (VinculoObraPage.LinhaMatriz linha : matriz) {
             String nome = vazio(linha.fantasia()) ? linha.razaoSocial() : linha.fantasia();
@@ -410,31 +518,38 @@ public class AutomacaoPipeline {
             }
 
             EmpreiteiraCache empreiteira = garantirEmpreiteira(
-                    nome, linha.idCfObras(), linha.fantasia(), linha.razaoSocial());
+                    nome, linha.idCfObras(), linha.fantasia(), linha.razaoSocial(), dados);
 
             completarCnpj(trc, empreiteira, linha, dados);
 
+            List<EmpreiteiraObraVinculo> jaGravados =
+                    vinculosPorEmpreiteira.getOrDefault(empreiteira.getId(), new ArrayList<>());
+
             List<String> nomesDasObras = new ArrayList<>();
+            List<String> normalizadosDaMatriz = new ArrayList<>();
 
             for (String nomeObra : linha.obras()) {
-                Obra obra = garantirObraPorNome(nomeObra);
+                Obra obra = obraDoCache(nomeObra, obrasPorNome);
 
-                if (vinculoRepository.findByEmpreiteiraAndObra(empreiteira, obra).isEmpty()) {
+                nomesDasObras.add(obra.getNome());
+                normalizadosDaMatriz.add(obra.getNomeNormalizado());
+
+                boolean jaExiste = jaGravados.stream()
+                        .anyMatch(v -> v.getObra() != null && obra.getId().equals(v.getObra().getId()));
+
+                if (!jaExiste) {
                     EmpreiteiraObraVinculo vinculo = new EmpreiteiraObraVinculo();
                     vinculo.setEmpreiteira(empreiteira);
                     vinculo.setObra(obra);
                     vinculo.setDataVerificacao(LocalDateTime.now());
-                    vinculoRepository.save(vinculo);
-                    gravados++;
+                    novos.add(vinculo);
                 }
-
-                nomesDasObras.add(obra.getNome());
             }
 
-            for (EmpreiteiraObraVinculo existente : vinculoRepository.findByEmpreiteira(empreiteira)) {
-                if (!nomesDasObras.contains(existente.getObra().getNome())) {
-                    vinculoRepository.delete(existente);
-                    removidos++;
+            for (EmpreiteiraObraVinculo existente : jaGravados) {
+                if (existente.getObra() == null
+                        || !normalizadosDaMatriz.contains(existente.getObra().getNomeNormalizado())) {
+                    obsoletos.add(existente);
                 }
             }
 
@@ -444,8 +559,37 @@ public class AutomacaoPipeline {
             }
         }
 
+        if (!novos.isEmpty()) {
+            vinculoRepository.saveAll(novos);
+        }
+
+        if (!obsoletos.isEmpty()) {
+            vinculoRepository.deleteAll(obsoletos);
+        }
+
         log.info("Vinculos espelhados no banco: {} novos, {} removidos ({} empreiteiros na matriz)",
-                gravados, removidos, matriz.size());
+                novos.size(), obsoletos.size(), matriz.size());
+    }
+
+    private Obra obraDoCache(String nomeObra, Map<String, Obra> cache) {
+        String normalizado = NormalizadorNome.normalizar(nomeObra);
+        Obra existente = cache.get(normalizado);
+
+        if (existente != null) {
+            return existente;
+        }
+
+        log.info("Obra '{}' existe no CF Obras mas nao esta no banco — gravada agora", nomeObra);
+
+        Obra obra = new Obra();
+        obra.setNome(nomeObra);
+        obra.setNomeNormalizado(normalizado);
+        obra.setDataVerificacao(LocalDateTime.now());
+
+        Obra salva = obraRepository.save(obra);
+        cache.put(normalizado, salva);
+
+        return salva;
     }
 
     private void completarCnpj(WebDriver trc, EmpreiteiraCache empreiteira,
@@ -492,23 +636,6 @@ public class AutomacaoPipeline {
         }
     }
 
-    private Obra garantirObraPorNome(String nomeObra) {
-        String normalizado = NormalizadorNome.normalizar(nomeObra);
-
-        Obra obra = obraRepository.findByNomeNormalizado(normalizado).orElseGet(Obra::new);
-
-        if (obra.getId() == null) {
-            log.info("Obra '{}' existe no CF Obras mas nao esta no application.yaml — gravada assim mesmo",
-                    nomeObra);
-        }
-
-        obra.setNome(nomeObra);
-        obra.setNomeNormalizado(normalizado);
-        obra.setDataVerificacao(LocalDateTime.now());
-
-        return obraRepository.save(obra);
-    }
-
     private Obra garantirObra(ObraConfig obraConfig, String nomeObraCfObras, String idCfObras) {
         String normalizado = NormalizadorNome.normalizar(nomeObraCfObras);
 
@@ -527,34 +654,84 @@ public class AutomacaoPipeline {
     }
 
     private EmpreiteiraCache garantirEmpreiteira(String nomeEmpreiteira, String idCfObras,
-                                                 String fantasia, String razao) {
-        EmpreiteiraCache empreiteira = acharEmpreiteira(razao)
-                .or(() -> acharEmpreiteira(fantasia))
-                .or(() -> acharEmpreiteira(nomeEmpreiteira))
-                .orElseGet(EmpreiteiraCache::new);
+                                                 String fantasia, String razao,
+                                                 RelatorioExecucaoService.Dados dados) {
+        List<String> nomes = new ArrayList<>();
+        nomes.add(razao);
+        nomes.add(fantasia);
+        nomes.add(nomeEmpreiteira);
+
+        EmpreiteiraCache empreiteira = empreiteiraLocalizador
+                .localizar(idCfObras, null, nomes, dados.pendencias)
+                .orElse(null);
+
+        if (empreiteira != null && !vazio(idCfObras) && !vazio(empreiteira.getIdCfObras())
+                && !idCfObras.equals(empreiteira.getIdCfObras())) {
+
+            log.warn("'{}' casou pelo nome com a linha '{}', mas o id do CF Obras e outro — gravando linha nova",
+                    nomeEmpreiteira, empreiteira.getNomeTrc());
+            empreiteira = null;
+        }
+
+        boolean mudou = false;
+
+        if (empreiteira == null) {
+            empreiteira = new EmpreiteiraCache();
+            mudou = true;
+        }
 
         if (vazio(empreiteira.getNomeTrc())) {
             empreiteira.setNomeTrc(vazio(razao) ? nomeEmpreiteira : razao);
+            mudou = true;
         }
 
         if (vazio(empreiteira.getNomeNormalizado())) {
-            empreiteira.setNomeNormalizado(
-                    NormalizadorNome.normalizar(empreiteira.getNomeTrc()));
+            empreiteira.setNomeNormalizado(nomeNormalizadoLivre(empreiteira.getNomeTrc(), idCfObras));
+            mudou = true;
         }
-        empreiteira.setCadastradaNoCfObras(true);
-        empreiteira.setDataUltimaVerificacao(LocalDateTime.now());
 
-        if (!vazio(idCfObras)) {
-            empreiteira.setIdCfObras(idCfObras);
+        if (!empreiteira.isCadastradaNoCfObras()) {
+            empreiteira.setCadastradaNoCfObras(true);
+            mudou = true;
         }
+
+        if (!vazio(idCfObras) && !idCfObras.equals(empreiteira.getIdCfObras())) {
+            empreiteira.setIdCfObras(idCfObras);
+            mudou = true;
+        }
+
         if (vazio(empreiteira.getNomeFantasia()) && !vazio(fantasia)) {
             empreiteira.setNomeFantasia(fantasia);
-        }
-        if (vazio(empreiteira.getRazaoSocial()) && !vazio(razao)) {
-            empreiteira.setRazaoSocial(razao);
+            mudou = true;
         }
 
+        if (vazio(empreiteira.getRazaoSocial()) && !vazio(razao)) {
+            empreiteira.setRazaoSocial(razao);
+            mudou = true;
+        }
+
+        if (!mudou) {
+            return empreiteira;
+        }
+
+        empreiteira.setDataUltimaVerificacao(LocalDateTime.now());
+
         return empreiteiraRepository.save(empreiteira);
+    }
+
+    private String nomeNormalizadoLivre(String nome, String idCfObras) {
+        String base = NormalizadorNome.normalizar(nome);
+
+        if (empreiteiraRepository.findByNomeNormalizado(base).isEmpty()) {
+            return base;
+        }
+
+        String comId = vazio(idCfObras) ? base + " 2" : base + " " + idCfObras;
+
+        log.warn("Nome normalizado '{}' ja esta em uso por outra empreiteira — gravando como '{}'",
+                base, comId);
+
+        return comId;
     }
 
     private void mapearPeloBanco(WebDriver cf) {
@@ -590,41 +767,7 @@ public class AutomacaoPipeline {
     }
 
     private Optional<EmpreiteiraCache> acharEmpreiteira(String nome) {
-        if (vazio(nome)) {
-            return Optional.empty();
-        }
-
-        String alvo = NormalizadorNome.normalizar(nome);
-
-        Optional<EmpreiteiraCache> direto = empreiteiraRepository.findByNomeNormalizado(alvo);
-
-        if (direto.isPresent()) {
-            return direto;
-        }
-
-        String alvoC = alvo.replaceAll("[^A-Z0-9]", "");
-
-        for (EmpreiteiraCache registro : empreiteiraRepository.findAll()) {
-            for (String candidato : List.of(
-                    registro.getNomeTrc() == null ? "" : registro.getNomeTrc(),
-                    registro.getRazaoSocial() == null ? "" : registro.getRazaoSocial(),
-                    registro.getNomeFantasia() == null ? "" : registro.getNomeFantasia())) {
-
-                if (candidato.isBlank()) {
-                    continue;
-                }
-
-                String comparado = NormalizadorNome.normalizar(candidato).replaceAll("[^A-Z0-9]", "");
-
-                if (comparado.equals(alvoC)
-                        || (comparado.length() > 6 && alvoC.length() > 6
-                        && (comparado.contains(alvoC) || alvoC.contains(comparado)))) {
-                    return Optional.of(registro);
-                }
-            }
-        }
-
-        return Optional.empty();
+        return empreiteiraLocalizador.porNome(nome);
     }
 
     private String somenteDigitos(String texto) {
@@ -636,7 +779,8 @@ public class AutomacaoPipeline {
     }
 
     private boolean cadastrarUma(WebDriver trc, WebDriver cf, String nome,
-                                 String nomeObraCfObras, StringBuilder problemas) {
+                                 String nomeObraCfObras, StringBuilder problemas,
+                                 RelatorioFrequencia relatorio) {
         String normalizado = NormalizadorNome.normalizar(nome);
         Optional<EmpreiteiraCache> emCache = empreiteiraRepository.findByNomeNormalizado(normalizado);
 
@@ -651,6 +795,17 @@ public class AutomacaoPipeline {
         }
 
         Optional<EmpreiteiraTrc> origemOpt = obterDados(trc, nome, emCache);
+
+        if (origemOpt.isEmpty()) {
+            Optional<String> pelaEquipe = nomeNoTrcPeloFuncionario(trc, relatorio, nome);
+
+            if (pelaEquipe.isPresent()) {
+                log.info("'{}' identificada no TRC como '{}' pelo cadastro do funcionario",
+                        nome, pelaEquipe.get());
+
+                origemOpt = trcEmployeeExtractor.extrairEmpreiteira(trc, pelaEquipe.get());
+            }
+        }
 
         if (origemOpt.isEmpty()) {
             log.warn("[PULANDO] {} — nao encontrada no TRC", nome);
@@ -691,6 +846,27 @@ public class AutomacaoPipeline {
             problemas.append("erro: ").append(nome).append("; ");
             return false;
         }
+    }
+
+    private Optional<String> nomeNoTrcPeloFuncionario(WebDriver trc,
+                                                      RelatorioFrequencia relatorio,
+                                                      String empreiteiraNoRelatorio) {
+        for (String funcionario : relatorio.funcionariosDa(empreiteiraNoRelatorio)) {
+            Optional<TrcFuncionarioExtractor.LinhaTrc> linha =
+                    trcFuncionarioExtractor.localizarNaListagem(trc, funcionario);
+
+            if (linha.isEmpty() || vazio(linha.get().empreiteira())) {
+                continue;
+            }
+
+            String noTrc = linha.get().empreiteira();
+
+            log.info("Funcionario '{}' esta no TRC sob a empreiteira '{}'", funcionario, noTrc);
+
+            return Optional.of(noTrc);
+        }
+
+        return Optional.empty();
     }
 
     private List<EmpreiteiraMapeada> filtrarPendentes(List<EmpreiteiraMapeada> mapeamento) {
@@ -750,14 +926,22 @@ public class AutomacaoPipeline {
     }
 
     private void marcarComoCadastrada(String normalizado, String nome) {
-        EmpreiteiraCache registro = empreiteiraRepository.findByNomeNormalizado(normalizado)
+        EmpreiteiraCache registro = empreiteiraLocalizador.porNome(nome)
                 .orElseGet(EmpreiteiraCache::new);
 
-        if (registro.getNomeTrc() == null || registro.getNomeTrc().isBlank()) {
+        if (registro.getId() != null) {
+            log.info("'{}' ja tem linha no banco (id {}, nome '{}') — atualizando em vez de criar outra",
+                    nome, registro.getId(), registro.getNomeTrc());
+        }
+
+        if (vazio(registro.getNomeTrc())) {
             registro.setNomeTrc(nome);
         }
 
-        registro.setNomeNormalizado(normalizado);
+        if (vazio(registro.getNomeNormalizado())) {
+            registro.setNomeNormalizado(normalizado);
+        }
+
         registro.setCadastradaNoCfObras(true);
         registro.setDataUltimaVerificacao(LocalDateTime.now());
 
@@ -766,12 +950,26 @@ public class AutomacaoPipeline {
 
     private void salvarNoBanco(EmpreiteiraTrc origem, String normalizado,
                                String nomeArquivo, String cor, boolean cadastrada) {
-        EmpreiteiraCache registro = empreiteiraRepository.findByNomeNormalizado(normalizado)
+        String cnpj = somenteDigitos(origem.cnpj());
+
+        EmpreiteiraCache registro = empreiteiraLocalizador.porCnpj(cnpj)
+                .or(() -> empreiteiraLocalizador.porNome(nomeArquivo))
                 .orElseGet(EmpreiteiraCache::new);
 
-        registro.setNomeTrc(nomeArquivo);
-        registro.setNomeNormalizado(normalizado);
-        registro.setCnpj(somenteDigitos(origem.cnpj()));
+        if (registro.getId() != null) {
+            log.info("'{}' ja tem linha no banco (id {}) — atualizando em vez de criar outra",
+                    nomeArquivo, registro.getId());
+        }
+
+        if (vazio(registro.getNomeTrc())) {
+            registro.setNomeTrc(nomeArquivo);
+        }
+
+        if (vazio(registro.getNomeNormalizado())) {
+            registro.setNomeNormalizado(normalizado);
+        }
+
+        registro.setCnpj(cnpj);
         registro.setRazaoSocial(origem.razaoSocial());
         registro.setNomeFantasia(origem.nomeFantasia());
         registro.setCorIdentificacao(cor);
@@ -801,17 +999,5 @@ public class AutomacaoPipeline {
             return null;
         }
         return texto.length() > limite ? texto.substring(0, limite) : texto;
-    }
-
-    private void fechar(WebDriver driver, String nome) {
-        if (driver == null) {
-            return;
-        }
-        try {
-            driver.quit();
-            log.info("Navegador do {} fechado", nome);
-        } catch (Exception e) {
-            log.warn("Falha ao fechar o navegador do {}: {}", nome, e.getMessage());
-        }
     }
 }
