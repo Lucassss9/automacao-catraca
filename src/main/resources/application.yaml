@@ -44,10 +44,6 @@ automacao:
       nomes-cf-obras:
         - "NOVO MUNDO CARRÃO"
         - "NOVO MUNDO CARRÃO II"
-    - codigo: ELO-SANTO-ANDRE
-      nome-trc: "Cury SP Elo Santo Andre"
-      nomes-cf-obras:
-        - "ELO SANTO ANDRÉ"
     - codigo: MODERN-MOOCA
       nome-trc: "Cury SP Modern Mooca CCISA124"
       nomes-cf-obras:
