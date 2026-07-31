@@ -13,6 +13,8 @@ public interface EmpreiteiraCacheRepository extends JpaRepository<EmpreiteiraCac
 
     Optional<EmpreiteiraCache> findByCnpj(String cnpj);
 
+    List<EmpreiteiraCache> findAllByIdCfObras(String idCfObras);
+
     @Query("select e.corIdentificacao from EmpreiteiraCache e where e.corIdentificacao is not null")
     List<String> buscarCoresEmUso();
 }

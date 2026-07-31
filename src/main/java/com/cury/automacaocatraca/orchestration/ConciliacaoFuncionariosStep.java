@@ -46,6 +46,10 @@ public class ConciliacaoFuncionariosStep {
     }
 
     public Resumo executar(WebDriver trc, WebDriver cf, PlanoConciliacao plano) {
+        return executar(trc, cf, plano, null);
+    }
+
+    public Resumo executar(WebDriver trc, WebDriver cf, PlanoConciliacao plano, Cronometro cronometro) {
         Resumo resumo = new Resumo();
 
         Map<String, Set<String>> porEmpreiteira = agrupar(plano.funcionariosParaCadastrar());
@@ -55,7 +59,6 @@ public class ConciliacaoFuncionariosStep {
             return resumo;
         }
 
-        trcExtractor.limparCache();
         cadastroPage.abrir(cf);
 
         for (Map.Entry<String, Set<String>> grupo : porEmpreiteira.entrySet()) {
@@ -75,12 +78,16 @@ public class ConciliacaoFuncionariosStep {
             log.info("--- {} ({} funcionarios pendentes) ---", empreiteira, funcionarios.size());
 
             for (String nome : funcionarios) {
+                Cronometro.Marcacao medicao = abrir(cronometro, nome + " (" + empreiteira + ")");
+
                 try {
                     processar(trc, cf, empreiteira, nome, resumo);
                 } catch (Exception e) {
                     log.error("[ERRO] {} ({}) -> {}", nome, empreiteira, e.getMessage());
                     resumo.erros.add(nome + ": " + e.getMessage());
                     resumo.naoCadastrados.add(nome);
+                } finally {
+                    fechar(medicao);
                 }
             }
 
@@ -90,6 +97,16 @@ public class ConciliacaoFuncionariosStep {
         log.info(resumo.resumoTexto());
 
         return resumo;
+    }
+
+    private Cronometro.Marcacao abrir(Cronometro cronometro, String detalhe) {
+        return cronometro == null ? null : cronometro.iniciar(Cronometro.ETAPA_FUNCIONARIOS, detalhe);
+    }
+
+    private void fechar(Cronometro.Marcacao medicao) {
+        if (medicao != null) {
+            medicao.fechar();
+        }
     }
 
     private void processar(WebDriver trc, WebDriver cf, String empreiteira,

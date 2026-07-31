@@ -3,6 +3,7 @@ package com.cury.automacaocatraca.config;
 import org.openqa.selenium.WebDriver;
 import org.openqa.selenium.chrome.ChromeDriver;
 import org.openqa.selenium.chrome.ChromeOptions;
+import org.openqa.selenium.support.events.EventFiringDecorator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -22,12 +23,18 @@ public class WebDriverFactory {
 
     private final boolean headless;
     private final int esperaImplicitaSegundos;
+    private final boolean medirNavegador;
+    private final CronometroWebDriverListener cronometroListener;
 
     public WebDriverFactory(
             @Value("${automacao.navegador.headless:false}") boolean headless,
-            @Value("${automacao.navegador.espera-implicita-segundos:3}") int esperaImplicitaSegundos) {
+            @Value("${automacao.navegador.espera-implicita-segundos:3}") int esperaImplicitaSegundos,
+            @Value("${automacao.cronometro.medir-navegador:true}") boolean medirNavegador,
+            CronometroWebDriverListener cronometroListener) {
         this.headless = headless;
         this.esperaImplicitaSegundos = Math.max(0, esperaImplicitaSegundos);
+        this.medirNavegador = medirNavegador;
+        this.cronometroListener = cronometroListener;
     }
 
     public WebDriver criar(Path pastaDownload) {
@@ -63,10 +70,26 @@ public class WebDriverFactory {
         WebDriver driver = new ChromeDriver(opcoes);
         driver.manage().timeouts().implicitlyWait(Duration.ofSeconds(esperaImplicitaSegundos));
 
-        log.info("Navegador aberto (headless={}, espera implicita={}s)",
-                headless, esperaImplicitaSegundos);
+        WebDriver entregue = cronometrar(driver);
 
-        return driver;
+        log.info("Navegador aberto (headless={}, espera implicita={}s, cronometro={})",
+                headless, esperaImplicitaSegundos, entregue != driver);
+
+        return entregue;
+    }
+
+    private WebDriver cronometrar(WebDriver driver) {
+        if (!medirNavegador || cronometroListener == null) {
+            return driver;
+        }
+
+        try {
+            return new EventFiringDecorator<>(cronometroListener).decorate(driver);
+        } catch (Exception e) {
+            log.warn("Nao consegui instrumentar o navegador para o cronometro ({}) — seguindo sem medicao fina",
+                    e.getMessage());
+            return driver;
+        }
     }
 
     private void criarPastaSeNecessario(Path pasta) {

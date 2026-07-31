@@ -13,9 +13,13 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 @Component
 public class TrcEmployeeExtractor {
@@ -25,6 +29,7 @@ public class TrcEmployeeExtractor {
     private static final By TABELA = By.id("table1");
     private static final By CAMPO_RAZAO_SOCIAL = By.id("razao_social");
 
+    private final Set<String> idsJaUsados = new HashSet<>();
     private final Map<String, String> cnpjPorNome = new LinkedHashMap<>();
     private boolean listagemCarregada;
 
@@ -37,6 +42,7 @@ public class TrcEmployeeExtractor {
     }
 
     public void limparCache() {
+        idsJaUsados.clear();
         cnpjPorNome.clear();
         listagemCarregada = false;
     }
@@ -141,11 +147,71 @@ public class TrcEmployeeExtractor {
 
         String id = procurarNaTabela(driver, nomeBusca, "listagem completa");
         if (id != null) {
+            idsJaUsados.add(id);
             return id;
         }
 
-        submeterBusca(driver, primeiraPalavraSignificativa(nomeBusca));
-        return procurarNaTabela(driver, nomeBusca, "resultado da busca");
+        String termo = primeiraPalavraSignificativa(nomeBusca);
+        submeterBusca(driver, termo);
+
+        id = procurarNaTabela(driver, nomeBusca, "resultado da busca");
+        if (id != null) {
+            idsJaUsados.add(id);
+            return id;
+        }
+
+        id = unicoResultadoDaBusca(driver, nomeBusca, termo);
+        if (id != null) {
+            idsJaUsados.add(id);
+        }
+
+        return id;
+    }
+
+    private String unicoResultadoDaBusca(WebDriver driver, String nomeBusca, String termo) {
+        Object resultado = executar(driver,
+                "var linhas = document.querySelectorAll('#table1 tbody tr');"
+                        + "var achados = [];"
+                        + "for (var i = 0; i < linhas.length; i++) {"
+                        + "  var link = linhas[i].querySelector(\"a[href*='alterEmpreiteira']\");"
+                        + "  if (!link) { continue; }"
+                        + "  var href = link.getAttribute('href') || '';"
+                        + "  achados.push({"
+                        + "    id: href.substring(href.lastIndexOf('/') + 1),"
+                        + "    nome: (linhas[i].cells[0].textContent || '').replace(/\\s+/g,' ').trim()"
+                        + "  });"
+                        + "}"
+                        + "return achados;");
+
+        if (!(resultado instanceof List<?> lista)) {
+            return null;
+        }
+
+        List<Map<?, ?>> candidatos = new ArrayList<>();
+
+        for (Object item : lista) {
+            if (!(item instanceof Map<?, ?> linha)) {
+                continue;
+            }
+            if (idsJaUsados.contains(String.valueOf(linha.get("id")))) {
+                continue;
+            }
+            candidatos.add(linha);
+        }
+
+        if (candidatos.size() != 1) {
+            log.warn("Busca por '{}' devolveu {} empreiteiras livres ({} no total) "
+                            + "— nao da para escolher sozinho",
+                    termo, candidatos.size(), lista.size());
+            return null;
+        }
+
+        Map<?, ?> unica = candidatos.get(0);
+
+        log.info("'{}' aceita como '{}' — unica empreiteira livre na busca por '{}' (id {})",
+                nomeBusca, unica.get("nome"), termo, unica.get("id"));
+
+        return String.valueOf(unica.get("id"));
     }
 
     private void submeterBusca(WebDriver driver, String termo) {

@@ -35,9 +35,12 @@ public class RelatorioExecucaoService {
     private static final Path DOWNLOADS = Path.of("downloads");
 
     private final int retencaoDias;
+    private final AnalisadorDeTempos analisador;
 
-    public RelatorioExecucaoService(@Value("${automacao.retencao-dias:30}") int retencaoDias) {
+    public RelatorioExecucaoService(@Value("${automacao.retencao-dias:30}") int retencaoDias,
+                                    AnalisadorDeTempos analisador) {
         this.retencaoDias = retencaoDias;
+        this.analisador = analisador;
     }
 
     public static final class Dados {
@@ -50,6 +53,7 @@ public class RelatorioExecucaoService {
         public Path arquivoOrigem;
         public int empreiteirasNoRelatorio;
         public int funcionariosNoRelatorio;
+        public Cronometro cronometro;
         public final List<String> empreiteirasCadastradas = new ArrayList<>();
         public final List<String> vinculosCriados = new ArrayList<>();
         public final Map<String, List<String>> obrasPorEmpreiteira = new LinkedHashMap<>();
@@ -170,13 +174,15 @@ public class RelatorioExecucaoService {
         StringBuilder texto = new StringBuilder();
         ConciliacaoFuncionariosStep.Resumo func = dados.funcionarios;
 
-        long minutos = Duration.between(dados.inicio, dados.fim).toMinutes();
+        long duracaoMs = dados.cronometro != null
+                ? dados.cronometro.totalMs()
+                : Duration.between(dados.inicio, dados.fim).toMillis();
 
         texto.append("# ").append(dados.nomeObra).append("\n\n");
         texto.append("Dados de ").append(dados.dataReferencia.format(DIA)).append("\n\n");
         texto.append("Rodou em ").append(dados.inicio.format(LEITURA))
                 .append(" ate ").append(dados.fim.format(HORA))
-                .append("  (").append(minutos).append(" min)  —  **")
+                .append("  (").append(Cronometro.formatar(duracaoMs)).append(")  —  **")
                 .append(registro.getStatus()).append("**\n\n");
 
         int atencao = func.funcoesDesconhecidas.size() + func.atribuicoesGestor.size()
@@ -202,6 +208,8 @@ public class RelatorioExecucaoService {
         if (!algo) {
             texto.append("Nada.\n\n");
         }
+
+        cronometro(texto, dados);
 
         texto.append("---\n\n## Resumo\n\n");
         texto.append("| | |\n|---|---:|\n");
@@ -243,6 +251,121 @@ public class RelatorioExecucaoService {
         }
 
         return texto.toString();
+    }
+
+    private void cronometro(StringBuilder texto, Dados dados) {
+        Cronometro cronometro = dados.cronometro;
+
+        if (cronometro == null) {
+            return;
+        }
+
+        long total = cronometro.totalMs();
+
+        texto.append("---\n\n## Cronometro\n\n");
+        texto.append("Tempo total **").append(Cronometro.formatar(total)).append("** — ")
+                .append(Cronometro.formatar(cronometro.totalNavegadorMs())).append(" (")
+                .append(Cronometro.percentual(cronometro.totalNavegadorMs(), total))
+                .append(") agindo no navegador e ")
+                .append(Cronometro.formatar(cronometro.totalPausaMs())).append(" (")
+                .append(Cronometro.percentual(cronometro.totalPausaMs(), total))
+                .append(") parado entre uma acao e outra.\n\n");
+
+        List<Cronometro.Estatistica> etapas = cronometro.etapas();
+
+        if (!etapas.isEmpty()) {
+            texto.append("### Tempo por etapa\n\n");
+            texto.append("| Etapa | Tempo | % | Vezes | Itens | Media/item | Navegador | Parado |\n");
+            texto.append("|---|---:|---:|---:|---:|---:|---:|---:|\n");
+
+            for (Cronometro.Estatistica etapa : etapas) {
+                texto.append("| ").append(etapa.nome)
+                        .append(" | ").append(Cronometro.formatar(etapa.totalMs))
+                        .append(" | ").append(Cronometro.percentual(etapa.totalMs, total))
+                        .append(" | ").append(etapa.vezes)
+                        .append(" | ").append(etapa.itens)
+                        .append(" | ").append(etapa.itens == 0 ? "-" : Cronometro.formatar(etapa.mediaItemMs()))
+                        .append(" | ").append(Cronometro.formatar(etapa.navegadorMs))
+                        .append(" | ").append(Cronometro.formatar(etapa.pausaMs))
+                        .append(" |\n");
+            }
+
+            texto.append("\n");
+        }
+
+        List<Cronometro.Medicao> lentos = cronometro.itensMaisLentos(15);
+
+        if (!lentos.isEmpty()) {
+            texto.append("### Os 15 pontos mais demorados\n\n");
+            texto.append("| Tempo | Etapa | Item |\n|---:|---|---|\n");
+
+            for (Cronometro.Medicao medicao : lentos) {
+                texto.append("| ").append(Cronometro.formatar(medicao.duracaoMs()))
+                        .append(" | ").append(medicao.etapa())
+                        .append(" | ").append(medicao.detalhe())
+                        .append(" |\n");
+            }
+
+            texto.append("\n");
+        }
+
+        List<Cronometro.UsoNavegador> usos = cronometro.navegador();
+
+        if (!usos.isEmpty()) {
+            texto.append("### O que o robo pediu ao navegador\n\n");
+            texto.append("| Acao | Chamadas | Tempo | Media | Pior chamada | Sem resultado | Excecoes |\n");
+            texto.append("|---|---:|---:|---:|---:|---:|---:|\n");
+
+            for (Cronometro.UsoNavegador uso : usos) {
+                texto.append("| ").append(uso.categoria)
+                        .append(" | ").append(uso.chamadas)
+                        .append(" | ").append(Cronometro.formatar(uso.totalMs))
+                        .append(" | ").append(Cronometro.formatar(uso.mediaMs()))
+                        .append(" | ").append(Cronometro.formatar(uso.maiorMs))
+                        .append(" | ").append(uso.vazias)
+                        .append(" | ").append(uso.erros)
+                        .append(" |\n");
+            }
+
+            texto.append("\n");
+
+            for (Cronometro.UsoNavegador uso : usos) {
+                if (uso.maiorMs >= 5000 && !uso.piorAlvo.isBlank()) {
+                    texto.append("Chamada isolada mais lenta: **").append(uso.categoria).append("** de ")
+                            .append(Cronometro.formatar(uso.maiorMs)).append(" em `")
+                            .append(uso.piorAlvo).append("`\n\n");
+                    break;
+                }
+            }
+        }
+
+        List<Cronometro.Pausa> pausas = cronometro.pausas();
+
+        if (!pausas.isEmpty()) {
+            texto.append("### Paradas do robo (sleep fixo, banco e processamento)\n\n");
+            texto.append("| Faixa | Vezes | Tempo somado |\n|---|---:|---:|\n");
+
+            for (Cronometro.Pausa pausa : pausas) {
+                texto.append("| ").append(pausa.faixa)
+                        .append(" | ").append(pausa.vezes)
+                        .append(" | ").append(Cronometro.formatar(pausa.totalMs))
+                        .append(" |\n");
+            }
+
+            texto.append("\n");
+        }
+
+        List<String> achados = analisador.analisarObra(cronometro);
+
+        if (!achados.isEmpty()) {
+            texto.append("### Onde da para ganhar tempo\n\n");
+
+            for (String achado : achados) {
+                texto.append("- ").append(achado).append("\n");
+            }
+
+            texto.append("\n");
+        }
     }
 
     private void linha(StringBuilder texto, String rotulo, int valor) {

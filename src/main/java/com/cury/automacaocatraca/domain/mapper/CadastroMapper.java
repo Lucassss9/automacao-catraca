@@ -77,7 +77,9 @@ public class CadastroMapper {
         if (chave.contains("PROPRIETARIO") || chave.contains("GERENTE")) {
             return NivelAcesso.GESTOR;
         }
-        if (chave.contains("ENCARREGADO")) {
+        if (chave.contains("ENCARREGAD") || chave.contains("MESTRE") ||
+                chave.contains("LIDER") || chave.contains("APONTADOR") ||
+                chave.contains("SUPERVISOR")) {
             return NivelAcesso.ENCARREGADO;
         }
         return NivelAcesso.FUNCIONARIO;
