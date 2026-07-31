@@ -6,7 +6,6 @@ import com.cury.automacaocatraca.domain.entity.EmpreiteiraCache;
 import com.cury.automacaocatraca.domain.entity.FuncionarioCache;
 import com.cury.automacaocatraca.domain.util.NormalizadorNome;
 import com.cury.automacaocatraca.excel.RelatorioFrequencia;
-import com.cury.automacaocatraca.repository.EmpreiteiraCacheRepository;
 import com.cury.automacaocatraca.repository.FuncionarioCacheRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -21,12 +20,12 @@ public class EmpreiteiraMatcher {
 
     private static final Logger log = LoggerFactory.getLogger(EmpreiteiraMatcher.class);
 
-    private final EmpreiteiraCacheRepository empreiteiraRepository;
+    private final EmpreiteiraLocalizador empreiteiraLocalizador;
     private final FuncionarioCacheRepository funcionarioRepository;
 
-    public EmpreiteiraMatcher(EmpreiteiraCacheRepository empreiteiraRepository,
+    public EmpreiteiraMatcher(EmpreiteiraLocalizador empreiteiraLocalizador,
                               FuncionarioCacheRepository funcionarioRepository) {
-        this.empreiteiraRepository = empreiteiraRepository;
+        this.empreiteiraLocalizador = empreiteiraLocalizador;
         this.funcionarioRepository = funcionarioRepository;
     }
 
@@ -38,7 +37,7 @@ public class EmpreiteiraMatcher {
         for (String empreiteiraTrc : relatorio.empreiteiras()) {
             String empreiteiraNormalizada = NormalizadorNome.normalizar(empreiteiraTrc);
 
-            if (empreiteiraCadastrada(empreiteiraNormalizada)) {
+            if (empreiteiraCadastrada(empreiteiraTrc)) {
                 existentes.add(empreiteiraTrc);
             } else {
                 paraCadastrar.add(empreiteiraTrc);
@@ -60,8 +59,8 @@ public class EmpreiteiraMatcher {
         return plano;
     }
 
-    private boolean empreiteiraCadastrada(String nomeNormalizado) {
-        Optional<EmpreiteiraCache> registro = empreiteiraRepository.findByNomeNormalizado(nomeNormalizado);
+    private boolean empreiteiraCadastrada(String nome) {
+        Optional<EmpreiteiraCache> registro = empreiteiraLocalizador.porNome(nome);
         return registro.isPresent() && registro.get().isCadastradaNoCfObras();
     }
 
