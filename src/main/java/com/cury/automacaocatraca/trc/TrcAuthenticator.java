@@ -66,6 +66,26 @@ public class TrcAuthenticator {
         aguardarEFecharModais(driver, Duration.ofSeconds(8));
     }
 
+    public boolean sessaoAtiva(WebDriver driver) {
+        if (driver == null) {
+            return false;
+        }
+
+        try {
+            String url = driver.getCurrentUrl();
+
+            if (url == null || url.toLowerCase().contains("/login")) {
+                return false;
+            }
+
+            return !driver.findElements(LINK_SAIR).isEmpty();
+
+        } catch (Exception e) {
+            log.warn("Nao consegui conferir a sessao do TRC: {}", e.getMessage());
+            return false;
+        }
+    }
+
     public void fecharModais(WebDriver driver) {
         aguardarEFecharModais(driver, Duration.ofSeconds(4));
     }

@@ -51,6 +51,27 @@ public class CfObrasAuthenticator {
         aguardarResultadoDoLogin(driver, espera);
     }
 
+    public boolean sessaoAtiva(WebDriver driver) {
+        if (driver == null) {
+            return false;
+        }
+
+        try {
+            String url = driver.getCurrentUrl();
+            String base = properties.url().replaceAll("/+$", "");
+
+            if (url == null || !url.startsWith(base)) {
+                return false;
+            }
+
+            return driver.findElements(CAMPO_EMAIL).stream().noneMatch(WebElement::isDisplayed);
+
+        } catch (Exception e) {
+            log.warn("Nao consegui conferir a sessao do CF Obras: {}", e.getMessage());
+            return false;
+        }
+    }
+
     private void aguardarResultadoDoLogin(WebDriver driver, WebDriverWait espera) {
         try {
             espera.until(d -> homeCarregada(d) || mensagemDeErroVisivel(d));

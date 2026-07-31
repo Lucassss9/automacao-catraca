@@ -9,6 +9,7 @@ import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 @Component
@@ -20,13 +21,22 @@ public class ExecucaoManualRunner implements ApplicationRunner {
     private final ObrasRegistry obrasRegistry;
     private final AutomacaoPipeline pipeline;
     private final ExecucaoAgendada agendada;
+    private final CronometroContexto cronometroContexto;
+    private final RelatorioGeralService relatorioGeralService;
+    private final SessaoNavegadores sessao;
 
     public ExecucaoManualRunner(ObrasRegistry obrasRegistry,
                                 AutomacaoPipeline pipeline,
-                                ExecucaoAgendada agendada) {
+                                ExecucaoAgendada agendada,
+                                CronometroContexto cronometroContexto,
+                                RelatorioGeralService relatorioGeralService,
+                                SessaoNavegadores sessao) {
         this.obrasRegistry = obrasRegistry;
         this.pipeline = pipeline;
         this.agendada = agendada;
+        this.cronometroContexto = cronometroContexto;
+        this.relatorioGeralService = relatorioGeralService;
+        this.sessao = sessao;
     }
 
     @Override
@@ -42,10 +52,16 @@ public class ExecucaoManualRunner implements ApplicationRunner {
             String codigo = valores.get(0);
             log.info("Execucao manual pedida para a obra {}", codigo);
 
+            LocalDateTime inicio = LocalDateTime.now();
+            cronometroContexto.limparRodada();
+
             try {
                 pipeline.executar(obrasRegistry.porCodigo(codigo));
+                relatorioGeralService.gerar("--obra=" + codigo, inicio, cronometroContexto.daRodada());
             } catch (IllegalArgumentException e) {
                 log.error("{}", e.getMessage());
+            } finally {
+                sessao.fechar();
             }
 
             return;
